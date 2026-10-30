@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the workflow can read the code and nothing else.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      # Real Valkey for the Lua, oversell and burst tests (locally they run on jedis-mock only).
+      # Pinned by digest; reachable only from this job's runner on localhost.
+      valkey:
+        image: valkey/valkey:9.0-alpine@sha256:187679e3bd4036959631e3f03983ab2ba503ab21e6fd0454d508e909db2ee989
+        ports:
+          - 6379:6379
+        options: >-
+          --memory 512m
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      VALKEY_URL: redis://127.0.0.1:6379
+      MAVEN_OPTS: -Xmx1g
+    steps:
+      # Every action is pinned to a full commit SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Lint and tests (jedis-mock and real Valkey)
+        run: make ci
+      - name: Test counts
+        if: always()
+        run: |
+          total=$(grep -ho 'tests="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
+          failed=$(grep -ho 'failures="[0-9]*"' target/surefire-reports/TEST-*.xml | grep -o '[0-9]*' | paste -sd+ | bc)
+          echo "::notice title=tests::${total} tests against jedis-mock and Valkey 9.0, ${failed} failures"
+      - name: Burst of 20,000 HTTP buyers against real Valkey, then the oversell audit
+        run: make burst
+      - name: Install OSV-Scanner v2.6.0 (checksum-verified)
+        run: |
+          curl -sSfLo "$RUNNER_TEMP/osv-scanner" https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64
+          echo "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Known-vulnerability audit
+        run: make audit
