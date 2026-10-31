@@ -122,7 +122,7 @@ Full numbers, commands and the mutation check: [docs/results/m1.md](docs/results
 
 | Check | Result |
 |---|---|
-| Tests (`make test`, jedis-mock) | **70 passed**, 0 failed (13 more real-Valkey cases run in CI; first CI run pending) |
+| Tests (`make test`, jedis-mock) | **70 passed**, 0 failed (13 more real-Valkey cases run in CI: [83 passed, 0 failed](https://github.com/EquinoxWN/flash-sale-engine/actions/runs/41144937516)) |
 | Lint | palantir-java-format clean, `-Xlint:all -Werror` no warnings |
 | 2,000 concurrent buyers, 100 units | exactly 100 winners, stock 0, audit clean |
 | 25 seeded random sales | never oversold, tokens never above the cap |
