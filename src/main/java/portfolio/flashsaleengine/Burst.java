@@ -162,8 +162,10 @@ public final class Burst {
                 errors.incrementAndGet();
                 return null;
             }
+            // Only answers that prove the request never reached Valkey are retried: a 503 for a
+            // store failure may come after the script ran, so a retry could buy a second unit.
             boolean rate = a.status() == 429 && a.body().contains("rate_limited");
-            boolean full = a.status() == 503;
+            boolean full = a.status() == 503 && a.body().contains("\"busy\"");
             if (!rate && !full) {
                 return a;
             }
