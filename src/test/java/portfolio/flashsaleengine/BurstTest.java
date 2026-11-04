@@ -3,11 +3,15 @@ package portfolio.flashsaleengine;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -95,6 +99,40 @@ class BurstTest {
         assertEquals(0, code, text + err.toString(StandardCharsets.UTF_8));
         assertTrue(text.contains("won: 200"), text);
         assertTrue(text.contains("oversold=0 -> OK"), text);
+    }
+
+    @Test
+    void onlyShedAnswersAreRetriedNotAStoreFailureWhoseOutcomeIsUnknown() throws Exception {
+        AtomicInteger tokenCalls = new AtomicInteger();
+        AtomicInteger buyCalls = new AtomicInteger();
+        HttpServer fake = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 16);
+        fake.createContext("/", ex -> {
+            String path = ex.getRequestURI().getPath();
+            boolean token = path.endsWith("/token");
+            (token ? tokenCalls : buyCalls).incrementAndGet();
+            // Token: shed once as busy, then issued. Buy: the store fails after the script may have run.
+            boolean shed = token && tokenCalls.get() == 1;
+            String body = token && !shed
+                    ? "{\"token\":\"0123456789abcdef0123456789abcdef\"}"
+                    : shed ? "{\"error\":\"busy\"}" : "{\"error\":\"store_unavailable\"}";
+            byte[] b = body.getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(token && !shed ? 200 : 503, b.length);
+            try (OutputStream out = ex.getResponseBody()) {
+                out.write(b);
+            }
+        });
+        fake.start();
+        try {
+            Burst.Result r =
+                    Burst.run(URI.create("http://127.0.0.1:" + fake.getAddress().getPort()), "s", 1, 1, 3);
+            assertEquals(2, tokenCalls.get(), "a busy 503 is retried");
+            assertEquals(1, buyCalls.get(), "a store_unavailable 503 is not retried");
+            assertEquals(1, r.busy());
+            assertEquals(1, r.errors());
+            assertEquals(0, r.won());
+        } finally {
+            fake.stop(0);
+        }
     }
 
     @Test

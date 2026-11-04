@@ -94,6 +94,37 @@ class RateLimiterTest {
     }
 
     @Test
+    void platformThreadsRacingOnOneSlotNeverOverAdmit() throws InterruptedException {
+        // Many rounds of 16 OS threads released together on a frozen clock: a read-then-write
+        // update instead of compare-and-set lets two threads take the same token.
+        for (int round = 0; round < 200; round++) {
+            RateLimiter r = new RateLimiter(1e-3, 8, () -> 42L);
+            AtomicInteger admitted = new AtomicInteger();
+            CountDownLatch go = new CountDownLatch(1);
+            List<Thread> threads = new ArrayList<>();
+            for (int t = 0; t < 16; t++) {
+                threads.add(Thread.ofPlatform().start(() -> {
+                    try {
+                        go.await();
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    for (int i = 0; i < 4; i++) {
+                        if (r.tryAcquire()) {
+                            admitted.incrementAndGet();
+                        }
+                    }
+                }));
+            }
+            go.countDown();
+            for (Thread t : threads) {
+                t.join();
+            }
+            assertEquals(8, admitted.get(), "round " + round);
+        }
+    }
+
+    @Test
     void rejectsBadSettings() {
         assertThrows(IllegalArgumentException.class, () -> new RateLimiter(0, 1));
         assertThrows(IllegalArgumentException.class, () -> new RateLimiter(Double.NaN, 1));

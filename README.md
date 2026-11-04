@@ -13,9 +13,9 @@ Part of my **Backend and API** list · Java 21
 
 ![burst of 20,000 buyers for 1,000 units, audit OK with oversold=0](docs/proof/demo.jpg)
 
-70 tests (Lua script result codes, 2,000-buyer races, randomized sales, HTTP end to end, rate limiter, CLI) pass, and no dependency has a known vulnerability:
+75 tests (Lua script result codes, 2,000-buyer races, randomized sales, HTTP end to end, rate limiter, CLI) pass, and no dependency has a known vulnerability:
 
-![mvn verify with 70 tests and the OSV dependency audit](docs/proof/tests.jpg)
+![mvn verify with 75 tests and the OSV dependency audit](docs/proof/tests.jpg)
 
 Locally, the backend is jedis-mock (an in-process Redis-protocol server that runs the Lua on LuaJ). CI runs the same tests and the burst against a real Valkey 9.0 container.
 
@@ -80,7 +80,7 @@ Language: **Java 21**. Code in `src/main/java/portfolio/flashsaleengine/`, Lua i
 ```bash
 make setup   # resolve dependencies
 make lint    # palantir-java-format check, compile with -Xlint:all -Werror
-make test    # 70 tests on jedis-mock (about a minute); set VALKEY_URL to add real-Valkey cases
+make test    # 75 tests on jedis-mock (about a minute); set VALKEY_URL to add real-Valkey cases
 make demo    # 20,000 HTTP buyers for 1,000 units on jedis-mock, then the audit
 make audit   # OSV-Scanner on a CycloneDX SBOM (as in CI)
 ```
@@ -112,17 +112,17 @@ curl -s -X POST -H 'X-User-Id: alice' -H 'X-Queue-Token: 5f0c...e1' localhost:80
 | 409 | per-user limit reached, or fewer units left than requested |
 | 410 | sold out |
 | 429 | `rate_limited` (gateway) or `queue_full` (token cap), with `Retry-After: 1` |
-| 503 | `busy` (no in-flight slot) or `store_unavailable`, with `Retry-After: 1` |
+| 503 | `busy` (no in-flight slot) or `store_unavailable`, with `Retry-After: 1`; only `busy` proves the purchase did not run, so the burst client retries `busy` and never `store_unavailable` |
 
 M1 trusts the `X-User-Id` header: put an authenticating proxy in front of the gateway.
 
 ## Tests and results
 
-Full numbers, commands and the mutation check: [docs/results/m1.md](docs/results/m1.md).
+Full numbers, commands and the mutation check: [docs/results/m1.md](docs/results/m1.md). Quality check of the 10 engineering rules, with a mutation test of the core functions: [docs/quality/2026-11-01.md](docs/quality/2026-11-01.md).
 
 | Check | Result |
 |---|---|
-| Tests (`make test`, jedis-mock) | **70 passed**, 0 failed (13 more real-Valkey cases run in CI: [83 passed, 0 failed](https://github.com/EquinoxWN/flash-sale-engine/actions/runs/41144937516)) |
+| Tests (`make test`, jedis-mock) | **75 passed**, 0 failed (13 more real-Valkey cases run in CI) |
 | Lint | palantir-java-format clean, `-Xlint:all -Werror` no warnings |
 | 2,000 concurrent buyers, 100 units | exactly 100 winners, stock 0, audit clean |
 | 25 seeded random sales | never oversold, tokens never above the cap |

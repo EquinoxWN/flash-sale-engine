@@ -19,7 +19,20 @@ class ValidationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "-x", "Upper", "a}b", "a:b", "a b", "0123456789abcdef0123456789abcdef0", "é"})
+    @ValueSource(
+            strings = {
+                "",
+                "-x",
+                "Upper",
+                "a}b",
+                "a:b",
+                "a b",
+                "a.b",
+                "a_b",
+                "a/b",
+                "0123456789abcdef0123456789abcdef0",
+                "é"
+            })
     void rejectsSaleIdsThatCouldEscapeTheKey(String id) {
         assertFalse(Ids.isSaleId(id));
         assertThrows(IllegalArgumentException.class, () -> SaleKeys.of(id));
